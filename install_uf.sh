@@ -156,25 +156,29 @@ fi
 
 chown -R "$SPLUNK_USER:$SPLUNK_USER" "$INSTALL_DIR"
 
-# ---------- first start + boot-start ----------
-info "First start (accepting license, seeding admin user)..."
-sudo -u "$SPLUNK_USER" "$INSTALL_DIR/bin/splunk" start --accept-license --answer-yes --no-prompt
-sudo -u "$SPLUNK_USER" "$INSTALL_DIR/bin/splunk" stop
-
+# ---------- boot-start + start ----------
+# Boot-start must be enabled as root BEFORE the first start. UF 10.x hands the
+# first start to systemd, and a non-root first start can't create the unit file
+# (it triggers a polkit password prompt and times out).
 if command -v systemctl >/dev/null && [[ -d /run/systemd/system ]]; then
-  info "Enabling boot-start under systemd"
+  info "Creating systemd service (accepts license)..."
   "$INSTALL_DIR/bin/splunk" enable boot-start -systemd-managed 1 -user "$SPLUNK_USER" \
       --accept-license --answer-yes --no-prompt
+  chown -R "$SPLUNK_USER:$SPLUNK_USER" "$INSTALL_DIR"
   systemctl daemon-reload
+  info "Starting SplunkForwarder service..."
   systemctl start SplunkForwarder
+  systemctl is-active --quiet SplunkForwarder \
+    || fail "Service failed to start. Check: journalctl -u SplunkForwarder -n 50"
 else
   info "No systemd; enabling init.d boot-start"
   "$INSTALL_DIR/bin/splunk" enable boot-start -user "$SPLUNK_USER" --accept-license --answer-yes --no-prompt
-  sudo -u "$SPLUNK_USER" "$INSTALL_DIR/bin/splunk" start
+  chown -R "$SPLUNK_USER:$SPLUNK_USER" "$INSTALL_DIR"
+  sudo -u "$SPLUNK_USER" "$INSTALL_DIR/bin/splunk" start --accept-license --answer-yes --no-prompt
 fi
 
 # ---------- verify ----------
-sleep 5
+sleep 10
 info "Forward-server status:"
 sudo -u "$SPLUNK_USER" "$INSTALL_DIR/bin/splunk" list forward-server -auth "$ADMIN_USER:$ADMIN_PASS" || true
 
