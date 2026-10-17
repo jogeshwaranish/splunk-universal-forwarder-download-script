@@ -30,9 +30,6 @@ function Info($m) { Write-Host "[+] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[!] $m" -ForegroundColor Yellow }
 function Fail($m) { Write-Host "[x] $m" -ForegroundColor Red; exit 1 }
 
-if (Get-Service -Name SplunkForwarder -ErrorAction SilentlyContinue) {
-    Fail "SplunkForwarder service already exists. Uninstall it first for a clean install."
-}
 
 if (-not $AdminPassword) {
     $AdminPassword = Read-Host "Set a forwarder admin password (min 8 chars)" -AsSecureString
@@ -61,6 +58,26 @@ if (-not $MsiPath) {
 }
 if (-not (Test-Path $MsiPath)) { Fail "MSI not found: $MsiPath" }
 $MsiPath = (Resolve-Path $MsiPath).Path
+
+# ---------- remove any existing install ----------
+# Done after the new MSI is in hand, so a failed download doesn't leave you with no forwarder.
+$uninstallKeys = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
+                 "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+$existing = Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like "UniversalForwarder*" }
+if ($existing -or (Get-Service SplunkForwarder -ErrorAction SilentlyContinue) -or (Test-Path $InstallDir)) {
+    Warn "Existing forwarder found - removing it for a clean install."
+    Stop-Service SplunkForwarder -Force -ErrorAction SilentlyContinue
+    foreach ($e in $existing) {
+        Info "Uninstalling $($e.DisplayName) $($e.DisplayVersion)"
+        $u = Start-Process msiexec.exe -ArgumentList "/x", $e.PSChildName, "/quiet", "/norestart" -Wait -PassThru
+        if ($u.ExitCode -notin 0, 1605, 3010) { Warn "Uninstall returned exit code $($u.ExitCode); continuing." }
+    }
+    if (Test-Path $InstallDir) { Remove-Item $InstallDir -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Get-Service SplunkForwarder -ErrorAction SilentlyContinue) { sc.exe delete SplunkForwarder | Out-Null }
+    if (Test-Path $InstallDir) { Fail "Couldn't fully remove $InstallDir (files in use?). Reboot and run again." }
+    Info "Old install removed."
+}
 
 # ---------- install ----------
 $log = Join-Path $env:TEMP "splunkforwarder_install.log"

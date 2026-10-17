@@ -69,7 +69,6 @@ if [[ -z "$PKG_URL" && -z "$PKG_FILE" ]]; then
   PKG_URL="https://download.splunk.com/products/universalforwarder/releases/${UF_VERSION}/linux/splunkforwarder-${UF_VERSION}-${UF_BUILD}-linux-${ARCH}.tgz"
   info "Using Universal Forwarder ${UF_VERSION} (${ARCH})"
 fi
-[[ -d "$INSTALL_DIR" ]] && fail "$INSTALL_DIR already exists. Remove it first if you want a clean reinstall."
 
 if [[ -z "$ADMIN_PASS" ]]; then
   read -r -s -p "Set a forwarder admin password (min 8 chars): " ADMIN_PASS; echo
@@ -107,6 +106,24 @@ if ! id -u "$SPLUNK_USER" >/dev/null 2>&1; then
 fi
 # Debian/Ubuntu: auth.log/syslog are readable by group 'adm'
 getent group adm >/dev/null && usermod -aG adm "$SPLUNK_USER"
+
+# ---------- remove any existing install ----------
+# Done after the new package is downloaded and verified, so a failed download
+# doesn't leave you with no forwarder at all.
+if [[ -e "$INSTALL_DIR" || -f /etc/systemd/system/SplunkForwarder.service ]]; then
+  warn "Existing forwarder found — removing it for a clean install."
+  systemctl stop SplunkForwarder 2>/dev/null || true
+  if [[ -x "$INSTALL_DIR/bin/splunk" ]]; then
+    "$INSTALL_DIR/bin/splunk" stop </dev/null 2>/dev/null || true
+    "$INSTALL_DIR/bin/splunk" disable boot-start </dev/null 2>/dev/null || true
+  fi
+  pkill -f "$INSTALL_DIR/bin/splunkd" 2>/dev/null || true
+  systemctl disable SplunkForwarder 2>/dev/null || true
+  rm -f /etc/systemd/system/SplunkForwarder.service /etc/init.d/splunk
+  systemctl daemon-reload 2>/dev/null || true
+  [[ "$INSTALL_DIR" == "/opt/splunkforwarder" ]] && rm -rf "$INSTALL_DIR"
+  info "Old install removed."
+fi
 
 # ---------- install ----------
 info "Extracting to $INSTALL_DIR"

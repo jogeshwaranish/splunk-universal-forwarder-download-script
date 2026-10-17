@@ -9,6 +9,12 @@ By default they download **Universal Forwarder 10.6.1.1** straight from Splunk (
 | `install_uf.sh` | Linux (Debian/Ubuntu, RHEL family) | auth.log / secure, syslog / messages, audit.log (if present) |
 | `install_uf.ps1` | Windows | Security, System, Application event logs; Sysmon and PowerShell Operational if present |
 
+## Reinstalls
+
+Each run is a **clean install**. If a forwarder is already on the machine, the script stops it, removes its service, and deletes the old install folder (`/opt/splunkforwarder` on Linux, `C:\Program Files\SplunkUniversalForwarder` on Windows, after uninstalling the MSI) before installing the new one. That includes its config, local admin user, and any data still queued on that machine. The removal happens only after the new package has downloaded successfully, so a failed download leaves the old install untouched.
+
+So to fix a broken install or point a machine at a new server, just run the script again.
+
 ## Before you run
 
 1. On the Splunk server: **Settings → Forwarding and receiving → Configure receiving** → add port `9997`.
