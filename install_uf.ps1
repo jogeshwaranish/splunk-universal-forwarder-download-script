@@ -4,20 +4,20 @@
   Install the Splunk Universal Forwarder on Windows and point it at your indexer.
 
 .EXAMPLE
-  .\install_uf.ps1 -ServerIP 192.168.1.50 -MsiUrl "https://download.splunk.com/products/universalforwarder/releases/.../splunkforwarder-...-x64-release.msi"
+  .\install_uf.ps1 -ServerIP 192.168.1.50
+  Downloads Universal Forwarder 10.6.1.1 (64-bit) and points it at 192.168.1.50:9997.
 
 .EXAMPLE
-  .\install_uf.ps1 -ServerIP 192.168.1.50 -Port 9997 -MsiPath .\splunkforwarder-9.x.x-x64-release.msi -Index windows
+  .\install_uf.ps1 -ServerIP 192.168.1.50 -Port 9997 -MsiPath .\splunkforwarder.msi -Index windows
 
 .NOTES
-  Get the .msi URL from splunk.com -> Universal Forwarder download -> Windows 64-bit
-  -> "Copy wget link". Splunk changes these URLs each release, so the script takes
-  the URL as a parameter instead of hardcoding a version.
+  For another version: splunk.com -> Universal Forwarder -> Windows 64-bit .msi
+  -> "Copy wget link", then pass it with -MsiUrl.
 #>
 param(
     [Parameter(Mandatory = $true)][string]$ServerIP,
     [ValidateRange(1, 65535)][int]$Port = 9997,
-    [string]$MsiUrl,
+    [string]$MsiUrl = "https://download.splunk.com/products/universalforwarder/releases/10.6.1.1/windows/splunkforwarder-10.6.1.1-b2ae2962645c-windows-x64.msi",
     [string]$MsiPath,
     [string]$AdminUser = "admin",
     [SecureString]$AdminPassword,
@@ -30,7 +30,6 @@ function Info($m) { Write-Host "[+] $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "[!] $m" -ForegroundColor Yellow }
 function Fail($m) { Write-Host "[x] $m" -ForegroundColor Red; exit 1 }
 
-if (-not $MsiUrl -and -not $MsiPath) { Fail "Provide -MsiUrl or -MsiPath." }
 if (Get-Service -Name SplunkForwarder -ErrorAction SilentlyContinue) {
     Fail "SplunkForwarder service already exists. Uninstall it first for a clean install."
 }
@@ -53,7 +52,7 @@ if ((Test-NetConnection -ComputerName $ServerIP -Port $Port -WarningAction Silen
 
 # ---------- get MSI ----------
 $downloaded = $null
-if ($MsiUrl) {
+if (-not $MsiPath) {
     $downloaded = Join-Path $env:TEMP "splunkforwarder.msi"
     Info "Downloading forwarder MSI..."
     $ProgressPreference = "SilentlyContinue"   # makes Invoke-WebRequest much faster

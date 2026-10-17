@@ -4,15 +4,16 @@
 # at your Splunk indexer (receiving port, usually 9997).
 #
 # Usage:
-#   sudo ./install_uf.sh -i <SERVER_IP> [-p PORT] (-u PKG_URL | -f PKG_FILE) [-a ADMIN_PASS] [-x INDEX]
+#   sudo ./install_uf.sh -i <SERVER_IP> [-p PORT] [-u PKG_URL | -f PKG_FILE] [-a ADMIN_PASS] [-x INDEX]
 #
 # Examples:
-#   sudo ./install_uf.sh -i 192.168.1.50 -u 'https://download.splunk.com/products/universalforwarder/releases/.../splunkforwarder-...-linux-amd64.tgz'
-#   sudo ./install_uf.sh -i 192.168.1.50 -p 9997 -f ./splunkforwarder-9.x.x-linux-amd64.tgz -x linux
+#   sudo ./install_uf.sh -i 192.168.1.50                      # downloads UF 10.6.1.1 for this CPU
+#   sudo ./install_uf.sh -i 192.168.1.50 -p 9997 -x linux     # custom port + index
+#   sudo ./install_uf.sh -i 192.168.1.50 -f ./splunkforwarder-....tgz   # use a local file
 #
-# Get the .tgz URL from splunk.com -> Universal Forwarder download -> Linux .tgz
-# -> "Copy wget link". Splunk changes these URLs every release, so the script
-# takes the URL as an argument instead of hardcoding a version.
+# By default it downloads Universal Forwarder 10.6.1.1 (amd64 or arm64, auto-detected).
+# For another version: splunk.com -> Universal Forwarder -> Linux .tgz -> "Copy wget link",
+# then pass it with -u.
 
 set -euo pipefail
 
@@ -24,6 +25,8 @@ ADMIN_USER="admin"
 ADMIN_PASS="${SPLUNK_PASSWORD:-}"
 INDEX="main"
 INSTALL_DIR="/opt/splunkforwarder"
+UF_VERSION="10.6.1.1"
+UF_BUILD="b2ae2962645c"
 SPLUNK_USER="splunkfwd"
 DOWNLOADED=""
 
@@ -32,7 +35,7 @@ warn()  { echo -e "\e[33m[!]\e[0m $*"; }
 fail()  { echo -e "\e[31m[x]\e[0m $*" >&2; exit 1; }
 
 usage() {
-  sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'
   exit 1
 }
 
@@ -55,7 +58,17 @@ done
 [[ $EUID -eq 0 ]] || fail "Run as root (sudo)."
 [[ -n "$SERVER_IP" ]] || { warn "Missing -i <SERVER_IP>"; usage; }
 [[ "$PORT" =~ ^[0-9]+$ ]] || fail "Port must be a number."
-[[ -n "$PKG_URL" || -n "$PKG_FILE" ]] || { warn "Give -u <URL> or -f <FILE>"; usage; }
+
+# Default download URL for this CPU architecture
+if [[ -z "$PKG_URL" && -z "$PKG_FILE" ]]; then
+  case "$(uname -m)" in
+    x86_64|amd64)  ARCH="amd64" ;;
+    aarch64|arm64) ARCH="arm64" ;;
+    *) fail "Unsupported architecture $(uname -m). Pass a package with -u or -f." ;;
+  esac
+  PKG_URL="https://download.splunk.com/products/universalforwarder/releases/${UF_VERSION}/linux/splunkforwarder-${UF_VERSION}-${UF_BUILD}-linux-${ARCH}.tgz"
+  info "Using Universal Forwarder ${UF_VERSION} (${ARCH})"
+fi
 [[ -d "$INSTALL_DIR" ]] && fail "$INSTALL_DIR already exists. Remove it first if you want a clean reinstall."
 
 if [[ -z "$ADMIN_PASS" ]]; then
